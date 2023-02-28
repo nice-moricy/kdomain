@@ -1,6 +1,6 @@
 module kdomain
 
-go 1.20
+go 1.13
 
 require (
 	github.com/miekg/dns v1.1.51
