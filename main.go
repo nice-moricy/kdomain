@@ -50,7 +50,7 @@ func init() {
 func main() {
 	// 给dns服务器IP添加端口
 	DnsServer = utils.JoinHostPort(DnsServer, "53")
-	aw := make(chan string, 1e3)
+	aw := make(chan string, 1e2)
 	f, err := os.Open(FileName)
 	if err != nil {
 		utils.Die(err.Error())
@@ -70,7 +70,9 @@ func main() {
 	async.Wait()
 	molix.Stop()
 	close(aw)
-	log.Info("[DONE]", time.Since(start).String()+format+"\n")
+	log.Info("[DONE]", utils.FormatString(
+		[]string{time.Since(start).String(), format, "\n"},
+	))
 }
 
 // 字典文件迭代器
@@ -81,11 +83,7 @@ func getFqdn(f *os.File) func() (string, bool) {
 			return "", false
 		}
 		return dns.Fqdn(utils.FormatString(
-			[]string{
-				utils.String(buf.Bytes()),
-				".",
-				Domain,
-			},
+			[]string{utils.String(buf.Bytes()), ".", Domain},
 		)), true
 	}
 }
@@ -118,19 +116,13 @@ func lookup(fqdn, dnsServer string, dnsType uint16) func() (string, bool) {
 		dnsServer,
 	)
 	if err != nil {
-		log.Err("[ERROR]", utils.FormatString([]string{
-			err.Error(),
-			"\r",
-		}))
+		log.Err("[ERROR]",
+			utils.FormatString([]string{fqdn, format, "\r"}))
 		return nil
 	}
 
 	n := len(r.Answer) - 1
 	if n < 1 {
-		log.Err("[WARNING]", utils.FormatString([]string{
-			fqdn,
-			"No answer\r",
-		}))
 		return nil
 	}
 

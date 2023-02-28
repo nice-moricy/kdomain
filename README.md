@@ -12,10 +12,11 @@ $ go build .
 
 **command parameter** 
 >  -d string  
->    	target domain  
+>     target domain  
 >  -dns string  
->    	target domain (default "8.8.8.8")  
+>     target domain (default "8.8.8.8")  
 >  -f string  
->    	set subdomain dict file (default "subdomains.txt")  
+>     set subdomain dict file (default "subdomains.txt")  
 >  -o string  
->    	set out put file (default "result.txt")  
+>     set out put file (default "result.txt")  
+
