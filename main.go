@@ -53,9 +53,9 @@ func init() {
 	flag.StringVar(&Domain, "d",
 		"", "target domain")
 	flag.StringVar(&Fdomain, "fd",
-		"", "fuzz domain the placeholder is ? example: w?.baidu.com -> www.baidu.com")
+		"", `fuzz domain the placeholder is ? example: "w?.baidu.com" -> "www.baidu.com"`)
 	flag.StringVar(&Rdomain, "rd",
-		"", `use regexp fuzz domain must be used -reg example: -rd w?.baidu.com -reg "\?"`)
+		"", `use regexp fuzz domain must be used -reg example: -rd "w?.baidu.com" -reg "\?"`)
 	flag.StringVar(&Reg, "reg", "", "set regexp for -rd")
 	flag.StringVar(&DnsServer, "dns",
 		"8.8.8.8", "dns server")
