@@ -1,14 +1,26 @@
 package utils
 
 import (
-	"fmt"
+	"bufio"
+	"errors"
 	"net"
 	"os"
 	"strings"
 	"unsafe"
+
+	"github.com/molikatty/mlog"
 )
 
-func FormatString(s []string) string {
+var (
+	deduplication = make(map[string]struct{})
+	Format        = strings.Repeat(" ", 30)
+)
+
+var (
+	ErrPlaceholder = errors.New("placecholder error please check your input")
+)
+
+func FormatString(s ...string) string {
 	var (
 		b strings.Builder
 		n int
@@ -31,11 +43,24 @@ func JoinHostPort(host, port string) string {
 	return net.JoinHostPort(host, port)
 }
 
-func String(s []byte) string {
+func ToString(s []byte) string {
 	return *(*string)(unsafe.Pointer(&s))
 }
 
-func Die(s interface{}) {
-	fmt.Fprintln(os.Stderr, s)
+func Readfile(f *os.File) *bufio.Scanner {
+	return bufio.NewScanner(f)
+}
+
+func RemoveDeduplication(s string) bool {
+	if _, ok := deduplication[s]; ok {
+		return false
+	}
+
+	deduplication[s] = struct{}{}
+	return true
+}
+
+func Die(s string) {
+	mlog.Logger().Err("[ERROR]", s)
 	os.Exit(1)
 }

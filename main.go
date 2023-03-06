@@ -1,171 +1,106 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"flag"
+	"fmt"
+	"kdomain/handle"
 	"kdomain/utils"
-	"os"
-	"strings"
-	"sync"
-	"sync/atomic"
+	"kdomain/utils/parse"
 	"time"
-
-	"github.com/miekg/dns"
-	"github.com/molikatty/mlog"
-	"github.com/molikatty/molix"
 )
 
 var (
 	FileName  string
 	Domain    string
+	Fdomain   string
+	Rdomain   string
+	Reg       string
 	DnsServer string
+	DnsFile   string
 	OutFile   string
 )
 
 var (
-	async  sync.WaitGroup
-	log    = mlog.Logger()
-	format = strings.Repeat(" ", 50)
+	dmMothed uint8
+	dnMothed = parse.Once
+	server   string
+	domain   string
+	version  = "0.3"
 )
 
 var (
 	ErrInput = errors.New("cant parse parameter please check your input")
 )
 
+func banner() {
+	banner := `
+   __ __     __  __  _        ___                  _    
+  / //_/__ _/ /_/ /_(_)_ __  / _ \___  __ _  ___ _(_)__ 
+ / ,< / _ ./ __/ __/ / // / / // / _ \/  ' \/ _ ./ / _ \
+/_/|_|\_,_/\__/\__/_/\_, / /____/\___/_/_/_/\_,_/_/_//_/
+                    /___/                               
+		kitty domain version: ` + version + `
+`
+	fmt.Println(banner)
+}
+
 // 初始化
 func init() {
 	banner()
-	flag.StringVar(&FileName, "f", "subdomains.txt", "set subdomain dict file")
-	flag.StringVar(&Domain, "d", "", "target domain")
-	flag.StringVar(&DnsServer, "dns", "8.8.8.8", "target domain")
-	flag.StringVar(&OutFile, "o", "result.txt", "set out put file")
+	flag.StringVar(&FileName, "f",
+		"subdomains.txt", "set subdomain dict file")
+	flag.StringVar(&Domain, "d",
+		"", "target domain")
+	flag.StringVar(&Fdomain, "fd",
+		"", "fuzz domain the placeholder is ? example: w?.baidu.com -> www.baidu.com")
+	flag.StringVar(&Rdomain, "rd",
+		"", `use regexp fuzz domain must be used -reg example: -rd w?.baidu.com -reg "\?"`)
+	flag.StringVar(&Reg, "reg", "", "set regexp for -rd")
+	flag.StringVar(&DnsServer, "dns",
+		"8.8.8.8", "dns server")
+	// flag.StringVar(&DnsFile, "fdns",
+	// "", "dns server file")
+	flag.StringVar(&OutFile, "o", "", "set out put file")
 	flag.Parse()
-	if Domain == "" {
+
+	server = DnsServer
+	switch {
+	case Domain != "" && Fdomain == "" && Rdomain == "" && Reg == "":
+		dmMothed = parse.Ddomian
+		domain = Domain
+	case Fdomain != "" && Domain == "" && Rdomain == "" && Reg == "":
+		dmMothed = parse.Fdomain
+		domain = Fdomain
+	case Rdomain != "" && Reg != "" && Domain == "" && Fdomain == "":
+		dmMothed = parse.Rdomain
+		domain = Rdomain
+		parse.Reg = Reg
+	}
+
+	if dmMothed == 0 || domain == "" {
 		flag.PrintDefaults()
-		utils.Die(ErrInput)
+		utils.Die(utils.ErrPlaceholder.Error())
+	}
+
+	// if DnsFile != "" {
+	// dnMothed = parse.File
+	// server = DnsFile
+	// }
+	if OutFile == "" {
+		OutFile = domain + ".txt"
 	}
 }
 
 func main() {
-	// 给dns服务器IP添加端口
-	DnsServer = utils.JoinHostPort(DnsServer, "53")
-	aw := make(chan string, 1e2)
-	f, err := os.Open(FileName)
-	if err != nil {
-		utils.Die(err.Error())
-	}
-	go result(aw)
 	start := time.Now()
-	fqdnItem := getFqdn(f)
-	for {
-		fqdn, ok := fqdnItem()
-		if !ok {
-			f.Close()
-			break
-		}
-
-		submit(fqdn, DnsServer, dns.TypeA, aw)
-	}
-	async.Wait()
-	molix.Stop()
-	close(aw)
-	log.Info("[DONE]", utils.FormatString(
-		[]string{time.Since(start).String(), format, "\n"},
-	))
-}
-
-// 字典文件迭代器
-func getFqdn(f *os.File) func() (string, bool) {
-	buf := bufio.NewScanner(f)
-	return func() (string, bool) {
-		if !buf.Scan() {
-			return "", false
-		}
-		return dns.Fqdn(utils.FormatString(
-			[]string{utils.String(buf.Bytes()), ".", Domain},
-		)), true
-	}
-}
-
-// 提交任务
-func submit(fqdn, dnsServer string, dnsType uint16, aw chan string) {
-	async.Add(1)
-	molix.Submit(func() {
-		defer async.Done()
-		item := lookup(fqdn, dnsServer, dnsType)
-		if item == nil {
-			log.Info("[SKIP]", utils.FormatString([]string{fqdn, format, "\r"}))
-			return
-		}
-		for {
-			data, ok := item()
-			if !ok {
-				break
-			}
-
-			aw <- data
-		}
-	})
-}
-
-// 初始化DNS结果的迭代器
-func lookup(fqdn, dnsServer string, dnsType uint16) func() (string, bool) {
-	r, err := dns.Exchange(
-		(&dns.Msg{}).SetQuestion(fqdn, dnsType),
-		dnsServer,
+	run := handle.NewRun(dmMothed, dnMothed)
+	run.SetDns(server)
+	run.SetSubdomain(FileName)
+	run.SetParseDomain(domain)
+	go run.GetAnwser(OutFile)
+	run.Run()
+	run.Info("[DONE]",
+		utils.FormatString(time.Since(start).String(), utils.Format, "\n"),
 	)
-	if err != nil {
-		log.Err("[ERROR]",
-			utils.FormatString([]string{fqdn, format, "\r"}))
-		return nil
-	}
-
-	n := len(r.Answer) - 1
-	if n < 1 {
-		return nil
-	}
-
-	var (
-		less atomic.Int64
-		max  = int64(n)
-	)
-	return func() (string, bool) {
-		index := less.Add(1) - 1
-		if index > max {
-			less.Store(max)
-			less.Add(1)
-			return "", false
-		}
-
-		return r.Answer[index].String(), true
-	}
-}
-
-// 导出结果
-func result(aw chan string) {
-	file, err := os.OpenFile(OutFile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
-	if err != nil {
-		utils.Die(err)
-	}
-
-	defer file.Close()
-	for data := range aw {
-		data = utils.FormatString([]string{data, "\n"})
-		log.Info("[FOUND]", data)
-		file.WriteString(data)
-	}
-}
-
-func banner() {
-	banner := `
- ____  __.__  __    __           ________                        .__        
-|   |/ _|__|/  |__/  |_ ___.__. \______ \   ____   _____ _____  |__| ____  
-|     < |  \   __\   __<   |  |  |    |  \ /  _ \ /     \\__  \ |  |/    \ 
-|   |  \|  ||  |  |  |  \___  |  |    /   (  <_> )  Y Y  \/ __ \|  |   |  \
-|___|__ \__||__|  |__|  / ____| /_______  /\____/|__|_|  (____  /__|___|  /
-        \/               \/              \/             \/     \/        \/ 
-		kitty domain version: 0.1
-`
-	log.OutMsg(log.Stdout, "", banner)
 }
