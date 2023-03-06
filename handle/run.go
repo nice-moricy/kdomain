@@ -28,16 +28,18 @@ func (r *RunDig) Run() {
 		if !ok {
 			break
 		}
-		r.Info("[DNS]", utils.FormatString(server, utils.Format, "\n"))
 		server = utils.JoinHostPort(server, "53")
-		r.Info("[DNS]", utils.FormatString(server, utils.Format, "\n"))
 
 		subItem := utils.Readfile(r.subFile)
-		for subItem.Scan() {
+		for {
+			subdomain, hasNext := subItem()
+			if !hasNext {
+				break
+			}
 			r.Add(1)
 
 			molix.Submit(func() {
-				domain := r.getFqdn(subItem.Text())
+				domain := r.getFqdn(subdomain)
 				if !r.runLookup(domain, server) {
 					r.Warning("[SKIP]", utils.FormatString(domain, utils.Format, "\r"))
 				}
@@ -74,7 +76,7 @@ func (r *RunDig) GetAnwser(outfile string) {
 			continue
 		}
 		data = utils.FormatString(data, "\n")
-		// r.Info("[FOUND]", data)
+		r.Info("[FOUND]", data)
 		file.WriteString(data)
 	}
 }

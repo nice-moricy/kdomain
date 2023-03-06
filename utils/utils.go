@@ -47,8 +47,11 @@ func ToString(s []byte) string {
 	return *(*string)(unsafe.Pointer(&s))
 }
 
-func Readfile(f *os.File) *bufio.Scanner {
-	return bufio.NewScanner(f)
+func Readfile(f *os.File) func() (string, bool) {
+	buf := bufio.NewScanner(f)
+	return func() (string, bool) {
+		return buf.Text(), buf.Scan()
+	}
 }
 
 func RemoveDeduplication(s string) bool {
